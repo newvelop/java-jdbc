@@ -21,18 +21,27 @@ public class JdbcTemplate {
     }
 
     public void insert(String sql, Object... params) {
-        Connection conn = getConnection();
-        runUpdateQuery(conn, sql, params);
+        try (Connection conn = getConnection()) {
+            runUpdateQuery(conn, sql, params);
+        } catch (SQLException e) {
+            log.error("sql exception", e);
+        }
     }
 
     public void update(String sql, Object... params) {
-        Connection conn = getConnection();
-        runUpdateQuery(conn, sql, params);
+        try (Connection conn = getConnection()) {
+            runUpdateQuery(conn, sql, params);
+        } catch (SQLException e) {
+            log.error("sql exception", e);
+        }
     }
 
     public void delete(String sql, Object... params) {
-        Connection conn = getConnection();
-        runUpdateQuery(conn, sql, params);
+        try (Connection conn = getConnection()) {
+            runUpdateQuery(conn, sql, params);
+        } catch (SQLException e) {
+            log.error("sql exception", e);
+        }
     }
 
     public <T> T queryForObject(final String sql, final RowMapper<T> rm, final Object... params) {
@@ -40,119 +49,41 @@ public class JdbcTemplate {
         return list == null || list.isEmpty() ? null : list.get(0);
     }
 
-    public <T> List<T> queryWithSetter(
-            final String sql,
-            final RowMapper<T> rm,
-            final PreparedStatementSetter preparedStatementSetter,
-            final Object... params
-    ) {
-        PreparedStatement pstmt = null;
-        Connection conn = getConnection();
-        List<T> result = new ArrayList<>();
-        try {
-            pstmt = conn.prepareStatement(sql);
-
-            log.debug("query : {}", sql);
-            preparedStatementSetter.setValues(pstmt);
-            final var resultSet = pstmt.executeQuery();
-            while (true) {
-                try {
-                    if (!resultSet.next()) break;
-                    result.add(rm.mapRow(resultSet));
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                    break;
-                }
-            }
-        } catch (SQLException e) {
-            log.error(e.getMessage(), e);
-            throw new RuntimeException(e);
-        } finally {
-            try {
-                if (pstmt != null) {
-                    pstmt.close();
-                }
-            } catch (SQLException ignored) {
-            }
-
-            try {
-                if (conn != null) {
-                    conn.close();
-                }
-            } catch (SQLException ignored) {
-            }
-            return result;
-        }
-    }
-
     public <T> List<T> query(final String sql, final RowMapper<T> rm, final Object... params) {
-        PreparedStatement pstmt = null;
-        Connection conn = getConnection();
-        List<T> result = new ArrayList<>();
-        try {
-            pstmt = conn.prepareStatement(sql);
-
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+         ) {
+            List<T> result = new ArrayList<>();
             log.debug("query : {}", sql);
             defaultPreparedStatementSetter(params).setValues(pstmt);
             final var resultSet = pstmt.executeQuery();
-            while (true) {
+            while (resultSet.next()) {
                 try {
-                    if (!resultSet.next()) break;
                     result.add(rm.mapRow(resultSet));
                 } catch (SQLException e) {
-                    e.printStackTrace();
+                    log.error("sqlexception", e);
                     break;
                 }
             }
+            return result;
         } catch (SQLException e) {
             log.error(e.getMessage(), e);
             throw new RuntimeException(e);
-        } finally {
-            try {
-                if (pstmt != null) {
-                    pstmt.close();
-                }
-            } catch (SQLException ignored) {
-            }
-
-            try {
-                if (conn != null) {
-                    conn.close();
-                }
-            } catch (SQLException ignored) {
-            }
-            return result;
         }
     }
 
     private void runUpdateQuery(Connection conn, String sql, Object... params) {
-        PreparedStatement pstmt = null;
-        try {
-            pstmt = conn.prepareStatement(sql);
-
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             log.debug("query : {}", sql);
             defaultPreparedStatementSetter(params).setValues(pstmt);
             pstmt.executeUpdate();
         } catch (SQLException e) {
             log.error(e.getMessage(), e);
             throw new RuntimeException(e);
-        } finally {
-            try {
-                if (pstmt != null) {
-                    pstmt.close();
-                }
-            } catch (SQLException ignored) {}
-
-            try {
-                if (conn != null) {
-                    conn.close();
-                }
-            } catch (SQLException ignored) {}
         }
     }
 
     private Connection getConnection() {
-        Connection conn = null;
         try {
             return dataSource.getConnection();
         } catch (SQLException e) {
@@ -167,9 +98,7 @@ public class JdbcTemplate {
                 for (int i = 0; i < args.length; i++) {
                     ps.setObject(i + 1, args[i]);
                 }
-            } catch (NullPointerException e) {
-                throw new SQLException(e);
-            } catch (SQLException e) {
+            } catch (NullPointerException | SQLException e) {
                 throw new SQLException(e);
             }
         };
